@@ -7,7 +7,8 @@ import warnings
 warnings.filterwarnings('ignore')
 #os.chdir('/Users/gosc/Desktop/Kaggle/Zomato - Bangalore') 
 
-
+# my comment
+# my coment two
 # ## Read data
 
 
@@ -42,7 +43,7 @@ data=pd.read_csv('zomato.csv',encoding='latin-1')
 data.head()
 
 
-
+print('Data size is')
 print(len(data))
 
 
