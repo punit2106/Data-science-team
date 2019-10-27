@@ -16,10 +16,7 @@ import random
 import numpy as np 
 import pandas as pd 
 import operator
-#import matplotlib.pyplot as plt
-#import seaborn as sns
-#from matplotlib import rcParams
-#import pandas_profiling
+from operator import itemgetter
 
 
 ### text processing
@@ -31,13 +28,7 @@ from collections import defaultdict  # For word frequency
 #import spacy  # For preprocessing
 from gensim.scripts.glove2word2vec import glove2word2vec
 
-#import nltk
-#from nltk.stem.porter import PorterStemmer
-#from nltk.sentiment.vader import SentimentIntensityAnalyzer
-#from nltk.tokenize import word_tokenize
-#from nltk.stem import WordNetLemmatizer
-#import shap
-#import lime
+
 
 ##### LIST CHECKING LEGTH OF THE LIST
 
@@ -172,6 +163,7 @@ for idx, rest in enumerate(rate_list):
 
 
 
+
 ###### REMOVING DUPLICATES ##################
 Dedup_Review_List = [list(set(x)) for x in RevRate_list] 
 RevRateLength=lenListOfLits(Dedup_Review_List)
@@ -179,7 +171,7 @@ print('Length Of deduplicatd Review/Rate list of tuples:', RevRateLength)
 
 
 del RateLength, ReviewLength, RevRateLength
-del i, idx, rev, tup, tuplist
+del i, idx, rev, tup, tuplist, rest
 
 
 
@@ -297,7 +289,7 @@ print('------------------------------------------------------------------')
 print('REVIEW LIST TOKENIZATION')
 
 
-ReviewSample = random.sample(list(enumerate(review_list2)), 1000)
+ReviewSample = random.sample(list(enumerate(review_list2)), 3000)
 ReviewSample = list(enumerate(review_list2))
 
 start = time.time()
@@ -392,7 +384,7 @@ for idx, idx2, rev in RevSampleTokens:
     for word in rev:
         if word in word2vec:
             temp_sim = word2vec.similarity('food', word)
-        if temp_sim>temp_max:
+        if temp_sim>=temp_max:
             temp_max=temp_sim
             max_word=word
     FoodSimilarity.append((idx,  idx2, rev, temp_max, max_word))
@@ -465,20 +457,77 @@ for k, v in FoodWordsScore_dict.items():
 ####  FEATURE CREATION - COUNT OF FOOD RELATED REVIEWS
 
 FoodRelatedCountRev={}
+FoodReviewIndex={}
 for i in range(len(FoodSimilarity)):
     if FoodSimilarity[i][3]>0.4:
         if FoodSimilarity[i][0] not in FoodRelatedCountRev.keys():
-            FoodRelatedCountRev[FoodSimilarity[i][0]]=1 
+            FoodRelatedCountRev[FoodSimilarity[i][0]]=1
+            FoodReviewIndex[FoodSimilarity[i][0]] = [FoodSimilarity[i][1]]
         else:
             FoodRelatedCountRev[FoodSimilarity[i][0]]+=1
-        
+            FoodReviewIndex[FoodSimilarity[i][0]].append(FoodSimilarity[i][1])
+  
+#sorting dictionary           
+{(k,v.sort()) for (k,v) in FoodReviewIndex.items()}
+
 
 #### CREATING FEATURE
 
+
+## Feature Count
 s = pd.Series(FoodRelatedCountRev, name='FoodRevs')
 data['food_review_cnt'] = s
 
-del s,i,max_word
+#teporary feature - indexes of reviews related to a topic
+c = pd.Series(FoodReviewIndex, name='FoodRevs')
+data['food_review_idx'] = c
+
+# temporary feature - rates per topic
+
+FoodRelatedRates={}
+for index, row in data.iterrows(): 
+    idx = data['food_review_idx'][index]
+    rates = data['rate_list'][index]
+    if pd.notna(data['food_review_cnt'][index])==True:
+        FoodRelatedRates[index] = itemgetter(*idx)(rates)
+        
+
+f = pd.Series(FoodRelatedRates, name='FoodRates')
+data['food_rates'] = f
+
+
+#final feature - average topic rate
+FoodAvgRates={}
+for index, row in data.iterrows(): 
+    if pd.notna(data['food_rates'][index])==True:
+        if type(data['food_rates'][index])==tuple:
+            FoodAvgRates[index]=round(sum(data['food_rates'][index])/len(data['food_rates'][index]),2)
+        else:
+            FoodAvgRates[index]=data['food_rates'][index]
+  
+z = pd.Series(FoodAvgRates, name='FoodAvgRate')
+data['food_avg_rate'] = z
+
+### real rate - previous was not correct since was calculated in the original df that was not deduplciated
+
+Rates={}
+for index, row in data.iterrows(): 
+    if len(data['rate_list'][index])>0:
+        if type(data['rate_list'][index])==list:
+            Rates[index]=round(sum(data['rate_list'][index])/len(data['rate_list'][index]),2)
+        else:
+            Rates[index]=data['rate_list'][index]
+
+
+t = pd.Series(Rates, name='AvgRate')
+data['general_avg_rate'] =t
+
+#### print differences
+
+
+del i, idx, index, rates, row
+del t,s,z,f,c
+del temp_max, temp_sim
 
 
 ### 2 
@@ -547,17 +596,55 @@ print("Dictionaries of counts and similarities creating time: ", end - start)
 #### FEATURE CREATION - COUNT OF FOOD RELATED REVIEWS
 
 ServiceRelatedCountRev={}
+ServiceReviewIndex={}
 for i in range(len(ServiceSimilarity)):
     if ServiceSimilarity[i][3]>0.4:
         if ServiceSimilarity[i][0] not in ServiceRelatedCountRev.keys():
             ServiceRelatedCountRev[ServiceSimilarity[i][0]]=1 
+            ServiceReviewIndex[ServiceSimilarity[i][0]]=[ServiceSimilarity[i][1]]
         else:
             ServiceRelatedCountRev[ServiceSimilarity[i][0]]+=1
-        
+            ServiceReviewIndex[ServiceSimilarity[i][0]].append(ServiceSimilarity[i][1])
 
+
+
+{(k,v.sort()) for (k,v) in ServiceReviewIndex.items()}
 
 s = pd.Series(ServiceRelatedCountRev, name='ServiceRevs')
 data['service_review_cnt'] = s
+
+
+#teporary feature - indexes of reviews related to a topic
+c = pd.Series(ServiceReviewIndex, name='ServRevs')
+data['service_review_idx'] = c
+
+# temporary feature - rates per topic
+
+ServiceRelatedRates={}
+for index, row in data.iterrows(): 
+    idx = data['service_review_idx'][index]
+    rates = data['rate_list'][index]
+    if pd.notna(data['service_review_cnt'][index])==True:
+        ServiceRelatedRates[index] = itemgetter(*idx)(rates)
+        
+
+f = pd.Series(ServiceRelatedRates, name='ServiceRates')
+data['service_rates'] = f
+
+
+#final feature - average topic rate
+ServiceAvgRates={}
+for index, row in data.iterrows(): 
+    if pd.notna(data['service_rates'][index])==True:
+        if type(data['service_rates'][index])==tuple:
+            ServiceAvgRates[index]=round(sum(data['service_rates'][index])/len(data['service_rates'][index]),2)
+        else:
+            ServiceAvgRates[index]=data['service_rates'][index]
+  
+z = pd.Series(ServiceAvgRates, name='ServiceAvgRate')
+data['service_avg_rate'] = z
+
+
 
 print('------------------------------------------------------------------------')
 print('')
@@ -615,21 +702,63 @@ PriceWordsCount_Sorted.reverse()
 
 end = time.time()
 
+
+
+
 print("Dictionaries of counts and similarities creating time: ", end - start)
 
 
 ####FEATURE CREATION - COUNT OF FOOD RELATED REVIEWS
 
 PriceRelatedCountRev={}
+PriceReviewIndex={}
+
 for i in range(len(PriceSimilarity)):
     if PriceSimilarity[i][3]>0.4:
         if PriceSimilarity[i][0] not in PriceRelatedCountRev.keys():
             PriceRelatedCountRev[PriceSimilarity[i][0]]=1 
+            PriceReviewIndex[PriceSimilarity[i][0]]=[PriceSimilarity[i][1]]
         else:
             PriceRelatedCountRev[PriceSimilarity[i][0]]+=1
-
+            PriceReviewIndex[PriceSimilarity[i][0]].append(PriceSimilarity[i][1])
+            
+{(k,v.sort()) for (k,v) in PriceReviewIndex.items()}          
+   
+#feature - review count         
 s = pd.Series(PriceRelatedCountRev, name='PriceRevs')
 data['price_review_cnt'] = s
+
+#teporary feature - indexes of reviews related to a topic
+c = pd.Series(PriceReviewIndex, name='PriceRevs')
+data['price_review_idx'] = c
+
+
+# temporary feature - rates per topic
+
+PriceRelatedRates={}
+for index, row in data.iterrows(): 
+    idx = data['price_review_idx'][index]
+    rates = data['rate_list'][index]
+    if pd.notna(data['price_review_cnt'][index])==True:
+        PriceRelatedRates[index] = itemgetter(*idx)(rates)
+        
+
+f = pd.Series(PriceRelatedRates, name='PriceRates')
+data['price_rates'] = f
+
+#final feature - average topic rate
+PriceAvgRates={}
+for index, row in data.iterrows(): 
+    if pd.notna(data['price_rates'][index])==True:
+        if type(data['price_rates'][index])==tuple:
+            PriceAvgRates[index]=round(sum(data['price_rates'][index])/len(data['price_rates'][index]),2)
+        else:
+            PriceAvgRates[index]=data['price_rates'][index]
+  
+z = pd.Series(PriceAvgRates, name='priceAvgRate')
+data['price_avg_rate'] = z
+
+
 
 print('------------------------------------------------------------------------')
 print('')
@@ -685,56 +814,101 @@ AmbienceWordsCount_Sorted.reverse()
 
 end = time.time()
 
-
+AmbienceReviewIndex={}
 AmbienceRelatedCountRev={}
 for i in range(len(AmbienceSimilarity)):
     if AmbienceSimilarity[i][3]>0.4:
         if AmbienceSimilarity[i][0] not in AmbienceRelatedCountRev.keys():
             AmbienceRelatedCountRev[AmbienceSimilarity[i][0]]=1 
+            AmbienceReviewIndex[AmbienceSimilarity[i][0]]=[AmbienceSimilarity[i][1]]
         else:
             AmbienceRelatedCountRev[AmbienceSimilarity[i][0]]+=1
-        
+            AmbienceReviewIndex[AmbienceSimilarity[i][0]].append(AmbienceSimilarity[i][1])
 
 #### FEATURE CERATION
+
+{(k,v.sort()) for (k,v) in AmbienceReviewIndex.items()}
+
 
 s = pd.Series(AmbienceRelatedCountRev, name='AmbienceRevs')
 data['ambience_review_cnt'] = s
 
-print("Dictionaries of counts and similarities creating time: ", end - start)
+#teporary feature - indexes of reviews related to a topic
+c = pd.Series(AmbienceReviewIndex, name='AmbRevs')
+data['ambience_review_idx'] = c
 
+# temporary feature - rates per topic
+
+AmbienceRelatedRates={}
+for index, row in data.iterrows(): 
+    idx = data['ambience_review_idx'][index]
+    rates = data['rate_list'][index]
+    if pd.notna(data['ambience_review_cnt'][index])==True:
+        AmbienceRelatedRates[index] = itemgetter(*idx)(rates)
+        
+
+f = pd.Series(AmbienceRelatedRates, name='AmbienceRates')
+data['ambience_rates'] = f
+
+#final feature - average topic rate
+AmbienceAvgRates={}
+for index, row in data.iterrows(): 
+    if pd.notna(data['ambience_rates'][index])==True:
+        if type(data['ambience_rates'][index])==tuple:
+            AmbienceAvgRates[index]=round(sum(data['ambience_rates'][index])/len(data['ambience_rates'][index]),2)
+        else:
+            AmbienceAvgRates[index]=data['ambience_rates'][index]
+  
+z = pd.Series(AmbienceAvgRates, name='AmbienceAvgRate')
+data['ambience_avg_rate'] = z
+
+
+
+
+print("Dictionaries of counts and similarities creating time: ", end - start)
 
 print('FINISHED FEATURE CREATION')
 
 
 '''
-LATER:
+
+FINISHED:
     
-    
-    1)FURTHER USING OF CREATED TOPIC FEATURES
-    
-   1A)AVERAGING RATE PER TOPIC
+    1. AVERAGING RATE PER TOPIC
     * for those reviews that related to given topic - avg rate
     * we should obtain that resturant with overall abg 4.8 
     
+LATER:   
     
-   1B) RATE TOPIC SPLIT
+    2. RATE TOPIC SPLIT
     * n - gram surrending food/service/local/price related reviews
     * sentiment analysis on them
     * substracting or adding +/-1 for section from main overall review
     * traingn word2vec model on ours reviews
     
-    2)  IMPROVING TOPIC ASSIGMENT BY TRAINING ON BIGGER CORPORA
+    3.  IMPROVING TOPIC ASSIGMENT BY TRAINING ON BIGGER CORPORA
     * YELP Reviews
 
 '''
 
-del i, max_word, rest, temp_max, temp_sim, s, v, k, start, end, token
-del FoodWordsScore, FoodWords
-del AmbienceWordsScore, AmbienceWords, PriceWordsScore, PriceWords, ServiceWordsScore, ServiceWords 
-del reviews
+del max_word, temp_max, temp_sim, start, end, z, s, i, f, c, token, idx, index, row
+del reviews, rates
+del Rates
+
+del FoodWordsScore, FoodWords, PriceWords, PriceWordsScore, ServiceWords, ServiceWordsScore, AmbienceWords, AmbienceWordsScore
+del FoodReviewIndex, ServiceReviewIndex, PriceReviewIndex, AmbienceReviewIndex
+del FoodRelatedCountRev, ServiceRelatedCountRev, PriceRelatedCountRev, AmbienceRelatedCountRev
+del FoodAvgRates, ServiceAvgRates, PriceAvgRates, AmbienceAvgRates
+del FoodRelatedRates, ServiceRelatedRates, PriceRelatedRates, AmbienceRelatedRates
+del FoodWordsCount_Sorted, ServiceWordsCount_Sorted, PriceWordsCount_Sorted, AmbienceWordsCount_Sorted
+del FoodWordsScore_Sorted, ServiceWordsScore_Sorted, PriceWordsScore_Sorted, AmbienceWordsScore_Sorted
+
+data = data.drop(['food_review_idx','service_review_idx'],axis=1)
+data = data.drop(['ambience_review_idx','price_review_idx'], axis=1)
+data = data.drop(['food_rates','service_rates', 'price_rates', 'ambience_rates'], axis=1)
 
 
-  
+data.loc[:,['food_review_cnt','service_review_cnt','price_review_cnt','ambience_review_cnt']] = data.loc[:,['food_review_cnt','service_review_cnt','price_review_cnt','ambience_review_cnt']].fillna(0)
 #        
 #### duplicates removal
 #from gensim.models.keyedvectors import KeyedVectors
